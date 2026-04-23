@@ -67,7 +67,6 @@ gh release create "$TAG" \
     --repo "$REPO" \
     --title "MacLaunch $APP_VERSION" \
     --notes-file "$ROOT_DIR/RELEASE.md" \
-    "$DIST_DIR/$APP_NAME-$APP_VERSION.dmg" \
-    "$DIST_DIR/$APP_NAME-$APP_VERSION.app"
+    "$DIST_DIR/$APP_NAME-$APP_VERSION.dmg"
 
 printf 'GitHub release %s published to %s\n' "$TAG" "$REPO"
