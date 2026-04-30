@@ -46,14 +46,16 @@ struct LaunchpadView: View {
     }
 
     private var recentApps: [AppInfo] {
-        catalog.recentAppIDs.compactMap { id in
+        guard settings.recentAppsSectionEnabled else { return [] }
+
+        return catalog.recentAppIDs.compactMap { id in
             catalog.apps.first(where: { $0.id == id && !catalog.isPinned($0) })
         }
     }
 
     private var libraryApps: [AppInfo] {
         catalog.apps.filter { app in
-            !catalog.isPinned(app) && !catalog.recentAppIDs.contains(app.id)
+            !catalog.isPinned(app)
         }
             .sorted { lhs, rhs in
                 if lhs.isSystemApp != rhs.isSystemApp {
@@ -153,6 +155,7 @@ struct LaunchpadView: View {
             scrollAccumulator = 0
         }
         .onReceive(NotificationCenter.default.publisher(for: .launcherFocusSearch)) { _ in
+            catalog.reload()
             currentPage = 0
             selectedTarget = nil
         }
@@ -171,8 +174,8 @@ struct LaunchpadView: View {
                     StatPill(label: "\(catalog.pinnedAppIDs.count) 个已固定", systemImage: "pin.fill")
                 }
 
-                if !catalog.recentAppIDs.isEmpty {
-                    StatPill(label: "\(catalog.recentAppIDs.count) 个最近使用", systemImage: "clock.fill")
+                if settings.recentAppsSectionEnabled && !catalog.recentAppIDs.isEmpty {
+                    StatPill(label: "\(recentApps.count) 个最近使用", systemImage: "clock.fill")
                 }
 
                 if catalog.isLoading {
@@ -191,7 +194,7 @@ struct LaunchpadView: View {
                 pinnedSection
             }
 
-            if !recentApps.isEmpty {
+            if settings.recentAppsSectionEnabled && !recentApps.isEmpty {
                 recentSection
             }
 

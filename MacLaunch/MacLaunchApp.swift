@@ -7,8 +7,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
 
     private var launchPanelController: LaunchPanelController?
+    private var settingsWindowController: NSWindowController?
     private var hotKeyManager: HotKeyManager?
-    private var statusItem: NSStatusItem?
+    private var settingsShortcutMonitor: Any?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -24,12 +25,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.$hotKeyPreset
             .sink { [weak self] _ in
                 self?.applyHotKeyPreset()
-                self?.configureStatusItem()
             }
             .store(in: &cancellables)
 
-        configureStatusItem()
+        configureMainMenu()
+        installSettingsShortcutMonitor()
         showLauncher()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        configureMainMenu()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let settingsShortcutMonitor {
+            NSEvent.removeMonitor(settingsShortcutMonitor)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -57,26 +68,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc
-    private func quitApp() {
-        NSApp.terminate(nil)
-    }
+    func openSettings() {
+        if let settingsWindowController {
+            settingsWindowController.showWindow(nil)
+            settingsWindowController.window?.orderFrontRegardless()
+            settingsWindowController.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
 
-    private func configureStatusItem() {
-        let item = statusItem ?? NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "square.grid.3x3.fill", accessibilityDescription: "Mac Launch")
-        item.button?.imagePosition = .imageOnly
+        let settingsView = SettingsView(settings: settings)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 680),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Mac Launch 设置"
+        window.contentView = NSHostingView(rootView: settingsView)
+        window.isReleasedWhenClosed = false
+        window.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        window.collectionBehavior.insert(.fullScreenAuxiliary)
+        window.center()
 
-        let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "显示启动台", action: #selector(showLauncher), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "隐藏启动台", action: #selector(hideLauncher), keyEquivalent: ""))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "快捷键: \(settings.hotKeyPreset.title)", action: nil, keyEquivalent: ""))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "退出 Mac Launch", action: #selector(quitApp), keyEquivalent: "q"))
-        menu.items.forEach { $0.target = self }
-
-        item.menu = menu
-        statusItem = item
+        let controller = NSWindowController(window: window)
+        settingsWindowController = controller
+        controller.showWindow(nil)
+        window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func applyHotKeyPreset() {
@@ -85,6 +105,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             modifiers: settings.hotKeyPreset.carbonModifiers
         )
     }
+
+    private func installSettingsShortcutMonitor() {
+        guard settingsShortcutMonitor == nil else { return }
+
+        settingsShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags == .command,
+                  event.charactersIgnoringModifiers == "," else {
+                return event
+            }
+
+            self?.openSettings()
+            return nil
+        }
+    }
+
+    private func configureMainMenu() {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu(title: "Mac Launch")
+
+        appMenu.addItem(
+            NSMenuItem(
+                title: "关于 Mac Launch",
+                action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                keyEquivalent: ""
+            )
+        )
+        appMenu.addItem(.separator())
+        let settingsMenuItem = NSMenuItem(
+            title: "设置...",
+            action: #selector(openSettings),
+            keyEquivalent: ","
+        )
+        settingsMenuItem.keyEquivalentModifierMask = [.command]
+        settingsMenuItem.target = self
+        appMenu.addItem(settingsMenuItem)
+        appMenu.addItem(.separator())
+        appMenu.addItem(
+            NSMenuItem(
+                title: "退出 Mac Launch",
+                action: #selector(NSApplication.terminate(_:)),
+                keyEquivalent: "q"
+            )
+        )
+
+        mainMenu.addItem(appMenuItem)
+        mainMenu.setSubmenu(appMenu, for: appMenuItem)
+        NSApp.mainMenu = mainMenu
+    }
 }
 
 @main
@@ -92,24 +162,14 @@ struct MacLaunchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-            MenuBarExtra("Mac Launch", systemImage: "square.grid.3x3.fill") {
-                MenuBarExtraContent(
-                    settings: appDelegate.settings,
-                    onShow: { appDelegate.showLauncher() },
-                    onHide: { appDelegate.hideLauncher() },
-                    onOpenSettings: {
-                        NSApp.activate(ignoringOtherApps: true)
-                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    },
-                    onQuit: { NSApp.terminate(nil) }
-                )
-            }
-
-        Settings {
-            SettingsView(settings: appDelegate.settings)
-        }
-        .commands {
-            CommandGroup(replacing: .newItem) {}
+        MenuBarExtra("Mac Launch", systemImage: "square.grid.3x3.fill") {
+            MenuBarExtraContent(
+                settings: appDelegate.settings,
+                onShow: { appDelegate.showLauncher() },
+                onHide: { appDelegate.hideLauncher() },
+                onOpenSettings: { appDelegate.openSettings() },
+                onQuit: { NSApp.terminate(nil) }
+            )
         }
     }
 }

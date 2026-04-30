@@ -35,8 +35,10 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                Text("最近使用数量")
+                Text("最近使用")
                     .font(.headline)
+
+                Toggle("显示最近使用板块", isOn: $settings.recentAppsSectionEnabled)
 
                 HStack {
                     Slider(
@@ -52,6 +54,11 @@ struct SettingsView: View {
                         .monospacedDigit()
                         .frame(width: 28, alignment: .trailing)
                 }
+                .disabled(!settings.recentAppsSectionEnabled)
+
+                Text("关闭后仍会记录启动历史，只是不在主页面展示。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 10) {

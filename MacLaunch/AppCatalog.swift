@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Darwin
 import Foundation
 
 @MainActor
@@ -15,6 +16,9 @@ final class AppCatalog: ObservableObject {
     private let recentAppsKey = "recentAppIDs"
     private let libraryOrderKey = "libraryOrderIDs"
     private var cancellables: Set<AnyCancellable> = []
+    private var applicationFolderWatchers: [DispatchSourceFileSystemObject] = []
+    private var reloadDebounceTask: Task<Void, Never>?
+    private var shouldReloadAfterCurrentLoad = false
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -29,14 +33,25 @@ final class AppCatalog: ObservableObject {
                 self.persistRecentAppIDs()
             }
             .store(in: &cancellables)
+
+        startObservingApplicationFolders()
+    }
+
+    deinit {
+        reloadDebounceTask?.cancel()
+        applicationFolderWatchers.forEach { $0.cancel() }
     }
 
     func reload() {
-        guard !isLoading else { return }
+        guard !isLoading else {
+            shouldReloadAfterCurrentLoad = true
+            return
+        }
 
         isLoading = true
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             let scannedApps = await Task.detached(priority: .userInitiated) {
                 Self.scanInstalledApps()
             }.value
@@ -44,6 +59,11 @@ final class AppCatalog: ObservableObject {
             apps = scannedApps
             normalizeLibraryOrder(with: scannedApps)
             isLoading = false
+
+            if shouldReloadAfterCurrentLoad {
+                shouldReloadAfterCurrentLoad = false
+                scheduleReload(delayNanoseconds: 250_000_000)
+            }
         }
     }
 
@@ -126,6 +146,43 @@ final class AppCatalog: ObservableObject {
         persistRecentAppIDs()
     }
 
+    private func scheduleReload(delayNanoseconds: UInt64 = 500_000_000) {
+        reloadDebounceTask?.cancel()
+        reloadDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard !Task.isCancelled else { return }
+            self?.reload()
+        }
+    }
+
+    private func startObservingApplicationFolders() {
+        let queue = DispatchQueue(label: "com.ryan.MacLaunch.application-folder-watch")
+
+        for root in Self.applicationRoots() where FileManager.default.fileExists(atPath: root.path) {
+            let fileDescriptor = open(root.path, O_EVTONLY)
+            guard fileDescriptor >= 0 else { continue }
+
+            let watcher = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: fileDescriptor,
+                eventMask: [.write, .delete, .rename, .attrib, .extend],
+                queue: queue
+            )
+
+            watcher.setEventHandler { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.scheduleReload()
+                }
+            }
+
+            watcher.setCancelHandler {
+                close(fileDescriptor)
+            }
+
+            watcher.resume()
+            applicationFolderWatchers.append(watcher)
+        }
+    }
+
     private func persistPinnedAppIDs() {
         UserDefaults.standard.set(pinnedAppIDs, forKey: pinnedAppsKey)
     }
@@ -158,13 +215,17 @@ final class AppCatalog: ObservableObject {
         persistLibraryOrderIDs()
     }
 
-    nonisolated private static func scanInstalledApps() -> [AppInfo] {
-        let fileManager = FileManager.default
-        let roots = [
+    nonisolated private static func applicationRoots() -> [URL] {
+        [
             URL(fileURLWithPath: "/Applications"),
             URL(fileURLWithPath: "/System/Applications"),
             URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Applications"),
         ]
+    }
+
+    nonisolated private static func scanInstalledApps() -> [AppInfo] {
+        let fileManager = FileManager.default
+        let roots = applicationRoots()
 
         var seen = Set<String>()
         var discoveredApps: [AppInfo] = []

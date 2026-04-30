@@ -55,6 +55,10 @@ final class AppSettings: ObservableObject {
         didSet { persist(recentAppsLimit, key: Self.recentAppsLimitKey) }
     }
 
+    @Published var recentAppsSectionEnabled: Bool {
+        didSet { persist(recentAppsSectionEnabled, key: Self.recentAppsSectionEnabledKey) }
+    }
+
     @Published var scrollPageSensitivity: Int {
         didSet { persist(scrollPageSensitivity, key: Self.scrollPageSensitivityKey) }
     }
@@ -70,6 +74,7 @@ final class AppSettings: ObservableObject {
     private static let libraryGridColumnsKey = "settings.libraryGridColumns"
     private static let libraryGridRowsKey = "settings.libraryGridRows"
     private static let recentAppsLimitKey = "settings.recentAppsLimit"
+    private static let recentAppsSectionEnabledKey = "settings.recentAppsSectionEnabled"
     private static let scrollPageSensitivityKey = "settings.scrollPageSensitivity"
     private static let mouseWheelPagingEnabledKey = "settings.mouseWheelPagingEnabled"
     private static let hotKeyPresetKey = "settings.hotKeyPreset"
@@ -78,6 +83,7 @@ final class AppSettings: ObservableObject {
         let storedLibraryGridColumns = userDefaults.object(forKey: Self.libraryGridColumnsKey) as? Int ?? 6
         let storedLibraryGridRows = userDefaults.object(forKey: Self.libraryGridRowsKey) as? Int ?? 8
         let storedRecentAppsLimit = userDefaults.object(forKey: Self.recentAppsLimitKey) as? Int ?? 12
+        let storedRecentAppsSectionEnabled = userDefaults.object(forKey: Self.recentAppsSectionEnabledKey) as? Bool ?? true
         let storedScrollPageSensitivity = userDefaults.object(forKey: Self.scrollPageSensitivityKey) as? Int ?? 7
         let storedMouseWheelPagingEnabled = userDefaults.object(forKey: Self.mouseWheelPagingEnabledKey) as? Bool ?? true
         let storedHotKey = userDefaults.string(forKey: Self.hotKeyPresetKey)
@@ -85,6 +91,7 @@ final class AppSettings: ObservableObject {
         libraryGridColumns = min(max(storedLibraryGridColumns, 3), 10)
         libraryGridRows = min(max(storedLibraryGridRows, 2), 12)
         recentAppsLimit = min(max(storedRecentAppsLimit, 6), 20)
+        recentAppsSectionEnabled = storedRecentAppsSectionEnabled
         scrollPageSensitivity = min(max(storedScrollPageSensitivity, 1), 10)
         mouseWheelPagingEnabled = storedMouseWheelPagingEnabled
         hotKeyPreset = HotKeyPreset(rawValue: storedHotKey ?? "") ?? .optionSpace

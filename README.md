@@ -1,5 +1,7 @@
 # MacLaunch
 
+[中文文档](./README.zh-CN.md)
+
 MacLaunch is a lightweight macOS launcher replacement built with SwiftUI.
 
 ## Features
@@ -7,6 +9,7 @@ MacLaunch is a lightweight macOS launcher replacement built with SwiftUI.
 - Global hotkey to show and hide the launcher
 - Pinned apps with drag-to-reorder
 - Recent apps section
+- Optional recent apps section
 - Library paging with customizable rows and columns
 - Mouse wheel paging with separate sensitivity controls
 - Keyboard navigation and quick launch shortcuts
@@ -18,7 +21,7 @@ MacLaunch is a lightweight macOS launcher replacement built with SwiftUI.
 - Click an app to launch it.
 - Use `Esc` or click the background to close it.
 - Drag apps to reorder pinned or library items.
-- Open the Settings window from the menu bar to adjust layout and paging.
+- Open the Settings window from the menu bar to adjust layout, recent apps, and paging.
 
 ## Build & Package
 
