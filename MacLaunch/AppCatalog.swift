@@ -157,6 +157,11 @@ final class AppCatalog: ObservableObject {
 
     private func startObservingApplicationFolders() {
         let queue = DispatchQueue(label: "com.ryan.MacLaunch.application-folder-watch")
+        let scheduleReloadOnMainActor: @Sendable () -> Void = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.scheduleReload()
+            }
+        }
 
         for root in Self.applicationRoots() where FileManager.default.fileExists(atPath: root.path) {
             let fileDescriptor = open(root.path, O_EVTONLY)
@@ -168,10 +173,8 @@ final class AppCatalog: ObservableObject {
                 queue: queue
             )
 
-            watcher.setEventHandler { [weak self] in
-                Task { @MainActor [weak self] in
-                    self?.scheduleReload()
-                }
+            watcher.setEventHandler {
+                scheduleReloadOnMainActor()
             }
 
             watcher.setCancelHandler {

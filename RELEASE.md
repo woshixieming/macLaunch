@@ -1,12 +1,10 @@
-# MacLaunch 1.0.2
+# MacLaunch 1.0.3
 
 ## Highlights
 
-- Added live refresh for newly installed applications.
-- Added a setting to show or hide the recent apps section.
-- Added Simplified Chinese README documentation.
-- Fixed duplicate menu bar icons.
-- Improved Settings reliability from the app menu and `Command + ,`.
+- Fixed an occasional crash triggered by application folder change events.
+- Narrowed app launch clicks to the app icon and app name only.
+- Kept empty space in the launcher available for the existing click-to-hide behavior.
 
 ## Notes
 

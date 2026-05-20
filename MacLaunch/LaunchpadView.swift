@@ -212,23 +212,21 @@ struct LaunchpadView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 26) {
                         ForEach(currentPageApps) { app in
-                            Button {
-                                launch(app)
-                            } label: {
-                                AppTile(
-                                    app: app,
-                                    isPinned: false,
-                                    isSelected: isSelected(app, in: .library),
-                                    showSurface: false
-                                )
-                            }
-                            .buttonStyle(.plain)
+                            AppTile(
+                                app: app,
+                                isPinned: false,
+                                isSelected: isSelected(app, in: .library),
+                                showSurface: false,
+                                onLaunch: {
+                                    launch(app)
+                                },
+                                onDragStart: {
+                                    draggedLibraryAppID = app.id
+                                    lastLibraryDropTargetID = nil
+                                    return NSItemProvider(object: app.id as NSString)
+                                }
+                            )
                             .opacity(draggedLibraryAppID == app.id ? 0.45 : 1)
-                            .onDrag {
-                                draggedLibraryAppID = app.id
-                                lastLibraryDropTargetID = nil
-                                return NSItemProvider(object: app.id as NSString)
-                            }
                             .onDrop(
                                 of: [UTType.text],
                                 delegate: LibraryReorderDropDelegate(
@@ -303,19 +301,17 @@ struct LaunchpadView: View {
                 HStack(spacing: 12) {
                     ForEach(recentApps) { app in
                         ZStack(alignment: .topTrailing) {
-                            Button {
-                                launch(app)
-                            } label: {
-                                AppTile(
-                                    app: app,
-                                    isPinned: false,
-                                    accent: .blue,
-                                    isSelected: isSelected(app, in: .recent),
-                                    isCompact: true
-                                )
-                                    .frame(width: 94)
-                            }
-                            .buttonStyle(.plain)
+                            AppTile(
+                                app: app,
+                                isPinned: false,
+                                accent: .blue,
+                                isSelected: isSelected(app, in: .recent),
+                                isCompact: true,
+                                onLaunch: {
+                                    launch(app)
+                                }
+                            )
+                            .frame(width: 94)
 
                             Button {
                                 catalog.togglePinned(app)
@@ -363,23 +359,21 @@ struct LaunchpadView: View {
                 HStack(spacing: 18) {
                     ForEach(pinnedApps) { app in
                         ZStack(alignment: .topTrailing) {
-                            Button {
-                                launch(app)
-                            } label: {
-                                AppTile(
-                                    app: app,
-                                    isPinned: true,
-                                    isSelected: isSelected(app, in: .pinned)
-                                )
-                                    .frame(width: 132)
-                                    .opacity(draggedPinnedAppID == app.id ? 0.45 : 1)
-                            }
-                            .buttonStyle(.plain)
-                            .onDrag {
-                                draggedPinnedAppID = app.id
-                                lastPinnedDropTargetID = nil
-                                return NSItemProvider(object: app.id as NSString)
-                            }
+                            AppTile(
+                                app: app,
+                                isPinned: true,
+                                isSelected: isSelected(app, in: .pinned),
+                                onLaunch: {
+                                    launch(app)
+                                },
+                                onDragStart: {
+                                    draggedPinnedAppID = app.id
+                                    lastPinnedDropTargetID = nil
+                                    return NSItemProvider(object: app.id as NSString)
+                                }
+                            )
+                            .frame(width: 132)
+                            .opacity(draggedPinnedAppID == app.id ? 0.45 : 1)
                             .onDrop(
                                 of: [UTType.text],
                                 delegate: PinnedReorderDropDelegate(
@@ -814,23 +808,19 @@ private struct AppTile: View {
     var isSelected = false
     var isCompact = false
     var showSurface = true
+    let onLaunch: () -> Void
+    var onDragStart: (() -> NSItemProvider)? = nil
 
     var body: some View {
-        VStack(spacing: isCompact ? 8 : 10) {
-            Image(nsImage: app.icon)
-                .resizable()
-                .scaledToFit()
-                .frame(width: isCompact ? 44 : 68, height: isCompact ? 44 : 68)
-                .shadow(color: .black.opacity(0.25), radius: 10, y: 8)
-
-            Text(app.name)
-                .font(.system(size: isCompact ? 12 : 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity)
-                .frame(height: isCompact ? 16 : 18)
+        VStack {
+            Button {
+                onLaunch()
+            } label: {
+                interactiveContent
+            }
+            .buttonStyle(.plain)
+            .modifier(AppTileDragModifier(onDragStart: onDragStart))
+            .contentShape(Rectangle())
         }
         .padding(.horizontal, isCompact ? 8 : 10)
         .padding(.vertical, isCompact ? 10 : 14)
@@ -847,8 +837,27 @@ private struct AppTile: View {
         }
         .shadow(color: showSurface && isSelected ? .white.opacity(0.26) : .clear, radius: 16)
         .scaleEffect(isSelected ? 1.03 : 1.0)
-        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .animation(.easeOut(duration: 0.12), value: isSelected)
+    }
+
+    private var interactiveContent: some View {
+        VStack(spacing: isCompact ? 8 : 10) {
+            Image(nsImage: app.icon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: isCompact ? 44 : 68, height: isCompact ? 44 : 68)
+                .shadow(color: .black.opacity(0.25), radius: 10, y: 8)
+
+            Text(app.name)
+                .font(.system(size: isCompact ? 12 : 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity)
+                .frame(height: isCompact ? 16 : 18)
+        }
+        .frame(width: isCompact ? 78 : 112)
     }
 
     private var tileFillColor: Color {
@@ -873,6 +882,18 @@ private struct AppTile: View {
         }
 
         return .white.opacity(0.14)
+    }
+}
+
+private struct AppTileDragModifier: ViewModifier {
+    let onDragStart: (() -> NSItemProvider)?
+
+    func body(content: Content) -> some View {
+        if let onDragStart {
+            content.onDrag(onDragStart)
+        } else {
+            content
+        }
     }
 }
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.3
+
+- Fixed an occasional crash caused by application folder watchers calling MainActor-isolated code from a background queue.
+- Limited app tile launch clicks to the app icon and app name, so surrounding empty space still hides the launcher.
+
 ## 1.0.2
 
 - Added live app catalog refresh when Applications folders change.
