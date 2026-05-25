@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+
+- Fixed the remaining app folder watcher crash by delivering file system events on the main queue before scheduling catalog reloads.
+
 ## 1.0.3
 
 - Fixed an occasional crash caused by application folder watchers calling MainActor-isolated code from a background queue.

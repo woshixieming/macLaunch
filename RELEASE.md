@@ -1,10 +1,9 @@
-# MacLaunch 1.0.3
+# MacLaunch 1.0.4
 
 ## Highlights
 
-- Fixed an occasional crash triggered by application folder change events.
-- Narrowed app launch clicks to the app icon and app name only.
-- Kept empty space in the launcher available for the existing click-to-hide behavior.
+- Fixed the remaining application folder watcher crash in version 1.0.3.
+- Moved app folder change callbacks onto the main queue to match the app catalog's MainActor isolation.
 
 ## Notes
 
