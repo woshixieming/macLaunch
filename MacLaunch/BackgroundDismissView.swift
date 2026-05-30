@@ -19,6 +19,10 @@ struct BackgroundDismissView: NSViewRepresentable {
 final class BackgroundHitView: NSView {
     var onBackgroundClick: (() -> Void)?
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         self
     }

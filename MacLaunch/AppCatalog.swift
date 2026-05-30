@@ -219,6 +219,71 @@ final class AppCatalog: ObservableObject {
         ]
     }
 
+    nonisolated private static func preferredLocalizations() -> [String] {
+        let preferredLanguages = Locale.preferredLanguages
+        var localizations: [String] = []
+
+        for language in preferredLanguages {
+            let normalized = language.replacingOccurrences(of: "-", with: "_")
+            localizations.append(normalized)
+
+            if normalized.hasPrefix("zh_Hans") {
+                localizations.append("zh_CN")
+            } else if normalized.hasPrefix("zh_Hant") {
+                localizations.append("zh_TW")
+            }
+
+            if let languageCode = normalized.split(separator: "_").first {
+                localizations.append(String(languageCode))
+            }
+        }
+
+        var seen = Set<String>()
+        return localizations.filter { seen.insert($0).inserted }
+    }
+
+    nonisolated private static func localizedAppName(for bundle: Bundle?, at url: URL) -> String {
+        let displayName = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+        let bundleName = bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
+        let fallbackName = displayName ?? bundleName ?? url.deletingPathExtension().lastPathComponent
+
+        guard let bundle else { return fallbackName }
+
+        let localizedName = localizedInfoPlistName(in: bundle)
+            ?? bundle.localizedInfoDictionary?["CFBundleDisplayName"] as? String
+            ?? bundle.localizedInfoDictionary?["CFBundleName"] as? String
+
+        guard let localizedName, !localizedName.isEmpty else {
+            return fallbackName
+        }
+
+        return localizedName
+    }
+
+    nonisolated private static func localizedInfoPlistName(in bundle: Bundle) -> String? {
+        guard let infoPlistTable = bundle.url(forResource: "InfoPlist", withExtension: "loctable"),
+              let localizations = NSDictionary(contentsOf: infoPlistTable) as? [String: Any]
+        else {
+            return nil
+        }
+
+        for localization in preferredLocalizations() {
+            guard let values = localizations[localization] as? [String: Any] else {
+                continue
+            }
+
+            if let displayName = values["CFBundleDisplayName"] as? String, !displayName.isEmpty {
+                return displayName
+            }
+
+            if let bundleName = values["CFBundleName"] as? String, !bundleName.isEmpty {
+                return bundleName
+            }
+        }
+
+        return nil
+    }
+
     nonisolated private static func scanInstalledApps() -> [AppInfo] {
         let fileManager = FileManager.default
         let roots = applicationRoots()
@@ -240,9 +305,7 @@ final class AppCatalog: ObservableObject {
 
                 let bundle = Bundle(url: item)
                 let bundleIdentifier = bundle?.bundleIdentifier
-                let displayName = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-                let bundleName = bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
-                let appName = displayName ?? bundleName ?? item.deletingPathExtension().lastPathComponent
+                let appName = localizedAppName(for: bundle, at: item)
                 let uniqueKey = bundleIdentifier ?? appName.lowercased()
 
                 guard seen.insert(uniqueKey).inserted else {

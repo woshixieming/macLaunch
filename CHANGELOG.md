@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.6
+
+- Fixed launcher blank-area clicks by using AppKit-backed hit areas for grid whitespace and the pagination gap.
+- Improved app names by reading localized `InfoPlist.loctable` entries, including Simplified Chinese names for Apple system apps.
+
 ## 1.0.5
 
 - Fixed launcher background clicks in app tile whitespace, app spacing, and the gap above pagination controls so those areas hide the launcher instead of doing nothing.

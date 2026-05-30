@@ -208,97 +208,99 @@ struct LaunchpadView: View {
                     .foregroundStyle(.white.opacity(0.72))
             }
 
-            ZStack {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 26) {
-                        ForEach(currentPageApps) { app in
-                            AppTile(
-                                app: app,
-                                isPinned: false,
-                                isSelected: isSelected(app, in: .library),
-                                showSurface: false,
-                                onLaunch: {
-                                    launch(app)
-                                },
-                                onDismiss: onDismiss,
-                                onDragStart: {
-                                    draggedLibraryAppID = app.id
-                                    lastLibraryDropTargetID = nil
-                                    return NSItemProvider(object: app.id as NSString)
-                                }
-                            )
-                            .opacity(draggedLibraryAppID == app.id ? 0.45 : 1)
-                            .onDrop(
-                                of: [UTType.text],
-                                delegate: LibraryReorderDropDelegate(
-                                    targetApp: app,
-                                    catalog: catalog,
-                                    draggedAppID: $draggedLibraryAppID,
-                                    lastDropTargetID: $lastLibraryDropTargetID
+            VStack(spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    VStack(spacing: 0) {
+                        LazyVGrid(columns: columns, spacing: 26) {
+                            ForEach(currentPageApps) { app in
+                                AppTile(
+                                    app: app,
+                                    isPinned: false,
+                                    isSelected: isSelected(app, in: .library),
+                                    showSurface: false,
+                                    onLaunch: {
+                                        launch(app)
+                                    },
+                                    onDismiss: onDismiss,
+                                    onDragStart: {
+                                        draggedLibraryAppID = app.id
+                                        lastLibraryDropTargetID = nil
+                                        return NSItemProvider(object: app.id as NSString)
+                                    }
                                 )
-                            )
+                                .opacity(draggedLibraryAppID == app.id ? 0.45 : 1)
+                                .onDrop(
+                                    of: [UTType.text],
+                                    delegate: LibraryReorderDropDelegate(
+                                        targetApp: app,
+                                        catalog: catalog,
+                                        draggedAppID: $draggedLibraryAppID,
+                                        lastDropTargetID: $lastLibraryDropTargetID
+                                    )
+                                )
+                            }
                         }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 20)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            onDismiss()
+                        }
+
+                        BackgroundDismissView(onBackgroundClick: onDismiss)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 20)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        onDismiss()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                    if hasMultiplePages {
+                        HStack(spacing: 0) {
+                            Color.clear
+                                .frame(width: 48)
+                                .frame(maxHeight: .infinity)
+                                .contentShape(Rectangle())
+                                .onDrop(
+                                    of: [UTType.text],
+                                    delegate: LibraryPageFlipDropDelegate(
+                                        direction: .previous,
+                                        currentPage: safeCurrentPage,
+                                        totalPages: pages.count,
+                                        draggedAppID: $draggedLibraryAppID,
+                                        onMoveToPage: moveLibraryDragToPreviousPage
+                                    )
+                                )
+
+                            Spacer(minLength: 0)
+
+                            Color.clear
+                                .frame(width: 48)
+                                .frame(maxHeight: .infinity)
+                                .contentShape(Rectangle())
+                                .onDrop(
+                                    of: [UTType.text],
+                                    delegate: LibraryPageFlipDropDelegate(
+                                        direction: .next,
+                                        currentPage: safeCurrentPage,
+                                        totalPages: pages.count,
+                                        draggedAppID: $draggedLibraryAppID,
+                                        onMoveToPage: moveLibraryDragToNextPage
+                                    )
+                                )
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.vertical, 12)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .scrollIndicators(.hidden)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                 if hasMultiplePages {
-                    HStack(spacing: 0) {
-                        Color.clear
-                            .frame(width: 48)
-                            .frame(maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                            .onDrop(
-                                of: [UTType.text],
-                                delegate: LibraryPageFlipDropDelegate(
-                                    direction: .previous,
-                                    currentPage: safeCurrentPage,
-                                    totalPages: pages.count,
-                                    draggedAppID: $draggedLibraryAppID,
-                                    onMoveToPage: moveLibraryDragToPreviousPage
-                                )
-                            )
+                    BackgroundDismissView(onBackgroundClick: onDismiss)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
 
-                        Spacer(minLength: 0)
-
-                        Color.clear
-                            .frame(width: 48)
-                            .frame(maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                            .onDrop(
-                                of: [UTType.text],
-                                delegate: LibraryPageFlipDropDelegate(
-                                    direction: .next,
-                                    currentPage: safeCurrentPage,
-                                    totalPages: pages.count,
-                                    draggedAppID: $draggedLibraryAppID,
-                                    onMoveToPage: moveLibraryDragToNextPage
-                                )
-                            )
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.vertical, 12)
+                    pageControls
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            if hasMultiplePages {
-                Color.clear
-                    .frame(height: 18)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        onDismiss()
-                    }
-
-                pageControls
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

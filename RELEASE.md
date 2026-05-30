@@ -1,9 +1,9 @@
-# MacLaunch 1.0.5
+# MacLaunch 1.0.6
 
 ## Highlights
 
-- Fixed launcher background clicks so app tile whitespace, app spacing, and the gap above pagination controls hide the launcher.
-- Kept app launching limited to the app icon and app name.
+- Fixed launcher blank-area clicks in the app grid and pagination gap.
+- Improved localized app names, including Simplified Chinese names for Apple system apps.
 
 ## Notes
 
