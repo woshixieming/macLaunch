@@ -1,9 +1,9 @@
-# MacLaunch 1.0.4
+# MacLaunch 1.0.5
 
 ## Highlights
 
-- Fixed the remaining application folder watcher crash in version 1.0.3.
-- Moved app folder change callbacks onto the main queue to match the app catalog's MainActor isolation.
+- Fixed launcher background clicks so app tile whitespace, app spacing, and the gap above pagination controls hide the launcher.
+- Kept app launching limited to the app icon and app name.
 
 ## Notes
 

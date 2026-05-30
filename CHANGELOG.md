@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5
+
+- Fixed launcher background clicks in app tile whitespace, app spacing, and the gap above pagination controls so those areas hide the launcher instead of doing nothing.
+- Kept app launching limited to the app icon and app name.
+
 ## 1.0.4
 
 - Fixed the remaining app folder watcher crash by delivering file system events on the main queue before scheduling catalog reloads.

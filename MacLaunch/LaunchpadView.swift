@@ -220,6 +220,7 @@ struct LaunchpadView: View {
                                 onLaunch: {
                                     launch(app)
                                 },
+                                onDismiss: onDismiss,
                                 onDragStart: {
                                     draggedLibraryAppID = app.id
                                     lastLibraryDropTargetID = nil
@@ -240,6 +241,10 @@ struct LaunchpadView: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 20)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onDismiss()
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .scrollIndicators(.hidden)
@@ -285,6 +290,13 @@ struct LaunchpadView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if hasMultiplePages {
+                Color.clear
+                    .frame(height: 18)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onDismiss()
+                    }
+
                 pageControls
             }
         }
@@ -297,10 +309,10 @@ struct LaunchpadView: View {
                 .font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
 
-            ScrollView(.horizontal) {
-                HStack(spacing: 12) {
-                    ForEach(recentApps) { app in
-                        ZStack(alignment: .topTrailing) {
+            ZStack {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 12) {
+                        ForEach(recentApps) { app in
                             AppTile(
                                 app: app,
                                 isPinned: false,
@@ -309,29 +321,21 @@ struct LaunchpadView: View {
                                 isCompact: true,
                                 onLaunch: {
                                     launch(app)
-                                }
+                                },
+                                onDismiss: onDismiss
                             )
                             .frame(width: 94)
-
-                            Button {
-                                catalog.togglePinned(app)
-                            } label: {
-                                Image(systemName: "pin")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(9)
-                                    .background(Circle().fill(Color.black.opacity(0.26)))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(10)
-                            .help("固定到常用区")
                         }
                     }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onDismiss()
+                    }
                 }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 6)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
             .padding(.horizontal, 4)
             .padding(.vertical, 10)
             .frame(height: 128)
@@ -355,10 +359,10 @@ struct LaunchpadView: View {
                     .foregroundStyle(.white.opacity(0.72))
             }
 
-            ScrollView(.horizontal) {
-                HStack(spacing: 18) {
-                    ForEach(pinnedApps) { app in
-                        ZStack(alignment: .topTrailing) {
+            ZStack {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 18) {
+                        ForEach(pinnedApps) { app in
                             AppTile(
                                 app: app,
                                 isPinned: true,
@@ -366,6 +370,7 @@ struct LaunchpadView: View {
                                 onLaunch: {
                                     launch(app)
                                 },
+                                onDismiss: onDismiss,
                                 onDragStart: {
                                     draggedPinnedAppID = app.id
                                     lastPinnedDropTargetID = nil
@@ -383,26 +388,17 @@ struct LaunchpadView: View {
                                     lastDropTargetID: $lastPinnedDropTargetID
                                 )
                             )
-
-                            Button {
-                                catalog.togglePinned(app)
-                            } label: {
-                                Image(systemName: "pin.slash")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(9)
-                                    .background(Circle().fill(Color.black.opacity(0.26)))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(10)
-                            .help("取消固定")
                         }
                     }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onDismiss()
+                    }
                 }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 6)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
             .padding(.horizontal, 4)
             .padding(.vertical, 10)
             .frame(height: 156)
@@ -809,18 +805,19 @@ private struct AppTile: View {
     var isCompact = false
     var showSurface = true
     let onLaunch: () -> Void
+    let onDismiss: () -> Void
     var onDragStart: (() -> NSItemProvider)? = nil
 
     var body: some View {
-        VStack {
-            Button {
-                onLaunch()
-            } label: {
-                interactiveContent
-            }
-            .buttonStyle(.plain)
-            .modifier(AppTileDragModifier(onDragStart: onDragStart))
-            .contentShape(Rectangle())
+        ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onDismiss()
+                }
+
+            interactiveContent
+                .modifier(AppTileDragModifier(onDragStart: onDragStart))
         }
         .padding(.horizontal, isCompact ? 8 : 10)
         .padding(.vertical, isCompact ? 10 : 14)
@@ -842,22 +839,33 @@ private struct AppTile: View {
 
     private var interactiveContent: some View {
         VStack(spacing: isCompact ? 8 : 10) {
-            Image(nsImage: app.icon)
-                .resizable()
-                .scaledToFit()
-                .frame(width: isCompact ? 44 : 68, height: isCompact ? 44 : 68)
-                .shadow(color: .black.opacity(0.25), radius: 10, y: 8)
+            Button {
+                onLaunch()
+            } label: {
+                Image(nsImage: app.icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: isCompact ? 44 : 68, height: isCompact ? 44 : 68)
+                    .shadow(color: .black.opacity(0.25), radius: 10, y: 8)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
-            Text(app.name)
-                .font(.system(size: isCompact ? 12 : 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity)
-                .frame(height: isCompact ? 16 : 18)
+            Button {
+                onLaunch()
+            } label: {
+                Text(app.name)
+                    .font(.system(size: isCompact ? 12 : 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: isCompact ? 78 : 112)
+                    .frame(height: isCompact ? 16 : 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
-        .frame(width: isCompact ? 78 : 112)
     }
 
     private var tileFillColor: Color {
