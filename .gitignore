@@ -1,5 +1,6 @@
 .DS_Store
 .derived/
+.derivedData/
 dist/
 RELEASE_REFERENCE.md
 *.xcuserstate
