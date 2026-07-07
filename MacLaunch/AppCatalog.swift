@@ -221,25 +221,40 @@ final class AppCatalog: ObservableObject {
 
     nonisolated private static func preferredLocalizations() -> [String] {
         let preferredLanguages = Locale.preferredLanguages
-        var localizations: [String] = []
+        var localizations = [
+            "zh_CN",
+            "zh_Hans",
+            "zh_Hans_CN",
+            "zh",
+            "zh_HK",
+            "zh_TW",
+            "zh_Hant",
+        ]
 
         for language in preferredLanguages {
-            let normalized = language.replacingOccurrences(of: "-", with: "_")
-            localizations.append(normalized)
-
-            if normalized.hasPrefix("zh_Hans") {
-                localizations.append("zh_CN")
-            } else if normalized.hasPrefix("zh_Hant") {
-                localizations.append("zh_TW")
-            }
-
-            if let languageCode = normalized.split(separator: "_").first {
-                localizations.append(String(languageCode))
-            }
+            let variants = localizationVariants(for: language)
+            localizations.append(contentsOf: variants)
         }
 
         var seen = Set<String>()
         return localizations.filter { seen.insert($0).inserted }
+    }
+
+    nonisolated private static func localizationVariants(for localization: String) -> [String] {
+        let normalized = localization.replacingOccurrences(of: "-", with: "_")
+        var variants = [normalized]
+
+        if normalized.hasPrefix("zh_Hans") {
+            variants.append("zh_CN")
+        } else if normalized.hasPrefix("zh_Hant") {
+            variants.append("zh_TW")
+        }
+
+        if let languageCode = normalized.split(separator: "_").first {
+            variants.append(String(languageCode))
+        }
+
+        return variants
     }
 
     nonisolated private static func localizedAppName(for bundle: Bundle?, at url: URL) -> String {
@@ -261,24 +276,60 @@ final class AppCatalog: ObservableObject {
     }
 
     nonisolated private static func localizedInfoPlistName(in bundle: Bundle) -> String? {
-        guard let infoPlistTable = bundle.url(forResource: "InfoPlist", withExtension: "loctable"),
-              let localizations = NSDictionary(contentsOf: infoPlistTable) as? [String: Any]
-        else {
-            return nil
+        for localization in preferredLocalizations() {
+            for variant in localizationVariants(for: localization) {
+                if let name = localizedInfoPlistName(in: bundle, localization: variant) {
+                    return name
+                }
+            }
         }
 
-        for localization in preferredLocalizations() {
-            guard let values = localizations[localization] as? [String: Any] else {
+        return nil
+    }
+
+    nonisolated private static func localizedInfoPlistName(in bundle: Bundle, localization: String) -> String? {
+        if let infoPlistTable = bundle.url(forResource: "InfoPlist", withExtension: "loctable"),
+           let localizations = NSDictionary(contentsOf: infoPlistTable) as? [String: Any],
+           let values = localizations[localization] as? [String: Any],
+           let name = appName(from: values)
+        {
+            return name
+        }
+
+        let stringLocalizations = [
+            localization,
+            localization.replacingOccurrences(of: "_", with: "-"),
+        ]
+
+        for stringLocalization in stringLocalizations {
+            guard let infoPlistStrings = bundle.url(
+                forResource: "InfoPlist",
+                withExtension: "strings",
+                subdirectory: nil,
+                localization: stringLocalization
+            ) else {
                 continue
             }
 
-            if let displayName = values["CFBundleDisplayName"] as? String, !displayName.isEmpty {
-                return displayName
+            guard let values = NSDictionary(contentsOf: infoPlistStrings) as? [String: Any] else {
+                continue
             }
 
-            if let bundleName = values["CFBundleName"] as? String, !bundleName.isEmpty {
-                return bundleName
+            if let name = appName(from: values) {
+                return name
             }
+        }
+
+        return nil
+    }
+
+    nonisolated private static func appName(from values: [String: Any]) -> String? {
+        if let displayName = values["CFBundleDisplayName"] as? String, !displayName.isEmpty {
+            return displayName
+        }
+
+        if let bundleName = values["CFBundleName"] as? String, !bundleName.isEmpty {
+            return bundleName
         }
 
         return nil

@@ -24,6 +24,9 @@ struct LaunchpadView: View {
     @State private var lastLibraryDropTargetID: String?
     @State private var selectedTarget: SelectionTarget?
     @State private var scrollAccumulator: CGFloat = 0
+    @State private var lastScrollPageChangeTimestamp: TimeInterval = 0
+
+    private let scrollPageChangeCooldown: TimeInterval = 0.18
 
     private var navigationColumns: Int {
         settings.libraryGridColumns
@@ -531,21 +534,28 @@ struct LaunchpadView: View {
                 return false
             }
 
-            if dominantDelta < 0 {
-                goToNextPage()
-            } else {
-                goToPreviousPage()
-            }
+            return accumulateScroll(delta: dominantDelta, threshold: 1, timestamp: event.timestamp)
+        }
+
+        if event.momentumPhase != [] {
             return true
         }
 
-        scrollAccumulator += dominantDelta
-        let threshold: CGFloat = settings.scrollPageThreshold
+        return accumulateScroll(delta: dominantDelta, threshold: settings.scrollPageThreshold, timestamp: event.timestamp)
+    }
 
-        guard abs(scrollAccumulator) >= threshold else {
-            return true
+    private func accumulateScroll(delta: CGFloat, threshold: CGFloat, timestamp: TimeInterval) -> Bool {
+        guard canChangePage(at: timestamp) else { return true }
+
+        if scrollAccumulator != 0, delta * scrollAccumulator < 0 {
+            scrollAccumulator = 0
         }
 
+        scrollAccumulator += delta
+
+        guard abs(scrollAccumulator) >= threshold else { return true }
+
+        let previousPage = safeCurrentPage
         if scrollAccumulator < 0 {
             goToNextPage()
         } else {
@@ -553,7 +563,16 @@ struct LaunchpadView: View {
         }
 
         scrollAccumulator = 0
+        if safeCurrentPage != previousPage {
+            lastScrollPageChangeTimestamp = timestamp
+        }
+
         return true
+    }
+
+    private func canChangePage(at timestamp: TimeInterval) -> Bool {
+        guard lastScrollPageChangeTimestamp > 0 else { return true }
+        return timestamp - lastScrollPageChangeTimestamp >= scrollPageChangeCooldown
     }
 
     private func digitShortcutIndex(for event: NSEvent) -> Int? {

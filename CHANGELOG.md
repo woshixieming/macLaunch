@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.7
+
+- Prefer Chinese app names when localized names are available, including apps that use `InfoPlist.strings`.
+- Improved mouse wheel and trackpad pagination so one scroll gesture does not jump across multiple pages.
+- Reduced scroll paging delay after the initial pagination smoothing.
+
 ## 1.0.6
 
 - Fixed launcher blank-area clicks by using AppKit-backed hit areas for grid whitespace and the pagination gap.

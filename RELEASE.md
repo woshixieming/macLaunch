@@ -1,9 +1,10 @@
-# MacLaunch 1.0.6
+# MacLaunch 1.0.7
 
 ## Highlights
 
-- Fixed launcher blank-area clicks in the app grid and pagination gap.
-- Improved localized app names, including Simplified Chinese names for Apple system apps.
+- Prefer Chinese app names when localized names are available.
+- Improved mouse wheel and trackpad page switching to avoid accidental multi-page jumps.
+- Reduced scroll paging delay while keeping protection against repeated page changes from one scroll gesture.
 
 ## Notes
 
