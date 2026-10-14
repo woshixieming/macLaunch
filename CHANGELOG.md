@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.8
+
+- Fixed Safari discovery when macOS exposes it through a hidden system Cryptex symlink.
+- Added right-click icon removal across the library, pinned apps, and recent apps, with persistent hiding and a restore action.
+- Added before/after drag insertion indicators and applied app reordering on drop.
+- Kept app order unchanged when dragging between library pages until the icon is dropped into place.
+
 ## 1.0.7
 
 - Prefer Chinese app names when localized names are available, including apps that use `InfoPlist.strings`.

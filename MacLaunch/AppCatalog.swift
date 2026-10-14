@@ -3,6 +3,11 @@ import Combine
 import Darwin
 import Foundation
 
+enum AppReorderPlacement: String {
+    case before
+    case after
+}
+
 @MainActor
 final class AppCatalog: ObservableObject {
     @Published private(set) var apps: [AppInfo] = []
@@ -10,21 +15,26 @@ final class AppCatalog: ObservableObject {
     @Published private(set) var pinnedAppIDs: [String] = []
     @Published private(set) var recentAppIDs: [String] = []
     @Published private(set) var libraryOrderIDs: [String] = []
+    @Published private(set) var hiddenAppIDs: [String] = []
 
     private let settings: AppSettings
+    private let userDefaults: UserDefaults
     private let pinnedAppsKey = "pinnedAppIDs"
     private let recentAppsKey = "recentAppIDs"
     private let libraryOrderKey = "libraryOrderIDs"
+    private let hiddenAppsKey = "hiddenAppIDs"
     private var cancellables: Set<AnyCancellable> = []
     private var applicationFolderWatchers: [DispatchSourceFileSystemObject] = []
     private var reloadDebounceTask: Task<Void, Never>?
     private var shouldReloadAfterCurrentLoad = false
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, userDefaults: UserDefaults = .standard) {
         self.settings = settings
-        pinnedAppIDs = UserDefaults.standard.stringArray(forKey: pinnedAppsKey) ?? []
-        recentAppIDs = UserDefaults.standard.stringArray(forKey: recentAppsKey) ?? []
-        libraryOrderIDs = UserDefaults.standard.stringArray(forKey: libraryOrderKey) ?? []
+        self.userDefaults = userDefaults
+        pinnedAppIDs = userDefaults.stringArray(forKey: pinnedAppsKey) ?? []
+        recentAppIDs = userDefaults.stringArray(forKey: recentAppsKey) ?? []
+        libraryOrderIDs = userDefaults.stringArray(forKey: libraryOrderKey) ?? []
+        hiddenAppIDs = userDefaults.stringArray(forKey: hiddenAppsKey) ?? []
 
         settings.$recentAppsLimit
             .sink { [weak self] newLimit in
@@ -40,6 +50,26 @@ final class AppCatalog: ObservableObject {
     deinit {
         reloadDebounceTask?.cancel()
         applicationFolderWatchers.forEach { $0.cancel() }
+    }
+
+    var visibleApps: [AppInfo] {
+        let hiddenIDs = Set(hiddenAppIDs)
+        return apps.filter { !hiddenIDs.contains($0.id) }
+    }
+
+    func removeIcon(for app: AppInfo) {
+        guard !hiddenAppIDs.contains(app.id) else { return }
+        hiddenAppIDs.append(app.id)
+        userDefaults.set(hiddenAppIDs, forKey: hiddenAppsKey)
+        pinnedAppIDs.removeAll { $0 == app.id }
+        recentAppIDs.removeAll { $0 == app.id }
+        persistPinnedAppIDs()
+        persistRecentAppIDs()
+    }
+
+    func restoreRemovedIcons() {
+        hiddenAppIDs = []
+        userDefaults.set(hiddenAppIDs, forKey: hiddenAppsKey)
     }
 
     func reload() {
@@ -82,31 +112,39 @@ final class AppCatalog: ObservableObject {
     }
 
     func movePinnedApp(_ sourceID: String, before targetID: String) {
+        movePinnedApp(sourceID, relativeTo: targetID, placement: .before)
+    }
+
+    func movePinnedApp(_ sourceID: String, relativeTo targetID: String, placement: AppReorderPlacement) {
         guard
             sourceID != targetID,
-            let sourceIndex = pinnedAppIDs.firstIndex(of: sourceID),
-            let targetIndex = pinnedAppIDs.firstIndex(of: targetID)
+            let reorderedIDs = reorderedIDs(
+                pinnedAppIDs,
+                moving: sourceID,
+                relativeTo: targetID,
+                placement: placement
+            )
         else {
             return
         }
 
-        if sourceIndex < targetIndex, sourceIndex + 1 == targetIndex {
-            return
-        }
-
-        let movedID = pinnedAppIDs.remove(at: sourceIndex)
-        let adjustedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex
-        pinnedAppIDs.insert(movedID, at: adjustedTargetIndex)
+        pinnedAppIDs = reorderedIDs
         persistPinnedAppIDs()
     }
 
     func moveLibraryApp(_ sourceID: String, before targetID: String) {
+        moveLibraryApp(sourceID, relativeTo: targetID, placement: .before)
+    }
+
+    func moveLibraryApp(_ sourceID: String, relativeTo targetID: String, placement: AppReorderPlacement) {
         guard sourceID != targetID else { return }
 
-        guard
-            let sourceIndex = libraryOrderIDs.firstIndex(of: sourceID),
-            let targetIndex = libraryOrderIDs.firstIndex(of: targetID)
-        else {
+        guard let reorderedIDs = reorderedIDs(
+            libraryOrderIDs,
+            moving: sourceID,
+            relativeTo: targetID,
+            placement: placement
+        ) else {
             if libraryOrderIDs.last != sourceID {
                 libraryOrderIDs.removeAll { $0 == sourceID }
                 libraryOrderIDs.append(sourceID)
@@ -115,19 +153,7 @@ final class AppCatalog: ObservableObject {
             return
         }
 
-        if sourceIndex < targetIndex, sourceIndex + 1 == targetIndex {
-            return
-        }
-
-        libraryOrderIDs.remove(at: sourceIndex)
-
-        guard let refreshedTargetIndex = libraryOrderIDs.firstIndex(of: targetID) else {
-            libraryOrderIDs.append(sourceID)
-            persistLibraryOrderIDs()
-            return
-        }
-
-        libraryOrderIDs.insert(sourceID, at: min(refreshedTargetIndex, libraryOrderIDs.count))
+        libraryOrderIDs = reorderedIDs
         persistLibraryOrderIDs()
     }
 
@@ -155,6 +181,30 @@ final class AppCatalog: ObservableObject {
         }
     }
 
+    private func reorderedIDs(
+        _ ids: [String],
+        moving sourceID: String,
+        relativeTo targetID: String,
+        placement: AppReorderPlacement
+    ) -> [String]? {
+        guard
+            sourceID != targetID,
+            ids.contains(sourceID),
+            ids.contains(targetID)
+        else {
+            return nil
+        }
+
+        var reordered = ids.filter { $0 != sourceID }
+        guard let targetIndex = reordered.firstIndex(of: targetID) else { return nil }
+
+        let insertionIndex = placement == .before ? targetIndex : targetIndex + 1
+        reordered.insert(sourceID, at: min(insertionIndex, reordered.count))
+
+        guard reordered != ids else { return nil }
+        return reordered
+    }
+
     private func startObservingApplicationFolders() {
         for root in Self.applicationRoots() where FileManager.default.fileExists(atPath: root.path) {
             let fileDescriptor = open(root.path, O_EVTONLY)
@@ -180,15 +230,15 @@ final class AppCatalog: ObservableObject {
     }
 
     private func persistPinnedAppIDs() {
-        UserDefaults.standard.set(pinnedAppIDs, forKey: pinnedAppsKey)
+        userDefaults.set(pinnedAppIDs, forKey: pinnedAppsKey)
     }
 
     private func persistRecentAppIDs() {
-        UserDefaults.standard.set(recentAppIDs, forKey: recentAppsKey)
+        userDefaults.set(recentAppIDs, forKey: recentAppsKey)
     }
 
     private func persistLibraryOrderIDs() {
-        UserDefaults.standard.set(libraryOrderIDs, forKey: libraryOrderKey)
+        userDefaults.set(libraryOrderIDs, forKey: libraryOrderKey)
     }
 
     private func normalizeLibraryOrder(with apps: [AppInfo]) {
@@ -342,6 +392,29 @@ final class AppCatalog: ObservableObject {
         var seen = Set<String>()
         var discoveredApps: [AppInfo] = []
 
+        func appendApp(at item: URL) {
+            let bundle = Bundle(url: item)
+            let bundleIdentifier = bundle?.bundleIdentifier
+            let appName = localizedAppName(for: bundle, at: item)
+            let uniqueKey = bundleIdentifier ?? appName.lowercased()
+
+            guard seen.insert(uniqueKey).inserted else { return }
+
+            let icon = NSWorkspace.shared.icon(forFile: item.path)
+            icon.size = NSSize(width: 64, height: 64)
+            let isSystemApp = item.path.hasPrefix("/System/")
+
+            discoveredApps.append(
+                AppInfo(
+                    name: appName,
+                    url: item,
+                    bundleIdentifier: bundleIdentifier,
+                    icon: icon,
+                    isSystemApp: isSystemApp
+                )
+            )
+        }
+
         for root in roots where fileManager.fileExists(atPath: root.path) {
             let enumerator = fileManager.enumerator(
                 at: root,
@@ -354,29 +427,14 @@ final class AppCatalog: ObservableObject {
                     continue
                 }
 
-                let bundle = Bundle(url: item)
-                let bundleIdentifier = bundle?.bundleIdentifier
-                let appName = localizedAppName(for: bundle, at: item)
-                let uniqueKey = bundleIdentifier ?? appName.lowercased()
-
-                guard seen.insert(uniqueKey).inserted else {
-                    continue
-                }
-
-                let icon = NSWorkspace.shared.icon(forFile: item.path)
-                icon.size = NSSize(width: 64, height: 64)
-                let isSystemApp = item.path.hasPrefix("/System/Applications")
-
-                discoveredApps.append(
-                    AppInfo(
-                        name: appName,
-                        url: item,
-                        bundleIdentifier: bundleIdentifier,
-                        icon: icon,
-                        isSystemApp: isSystemApp
-                    )
-                )
+                appendApp(at: item)
             }
+        }
+
+        // Safari can be a hidden symlink into the system Cryptex, skipped by enumeration.
+        if let safariURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari"),
+           fileManager.fileExists(atPath: safariURL.path) {
+            appendApp(at: safariURL.resolvingSymlinksInPath())
         }
 
         return discoveredApps.sorted {

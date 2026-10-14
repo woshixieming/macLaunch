@@ -21,6 +21,7 @@ MacLaunch is a lightweight macOS launcher replacement built with SwiftUI.
 - Click an app to launch it.
 - Use `Esc` or click the background to close it.
 - Drag apps to reorder pinned or library items.
+- Right-click an app icon to remove it from the launcher without uninstalling the app. Use the restore button at the top to show removed icons again.
 - Open the Settings window from the menu bar to adjust layout, recent apps, and paging.
 
 ## Build & Package

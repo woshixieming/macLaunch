@@ -20,11 +20,12 @@ struct LaunchpadView: View {
     @State private var currentPage = 0
     @State private var draggedPinnedAppID: String?
     @State private var draggedLibraryAppID: String?
-    @State private var lastPinnedDropTargetID: String?
-    @State private var lastLibraryDropTargetID: String?
+    @State private var pinnedReorderTarget: ReorderTarget?
+    @State private var libraryReorderTarget: ReorderTarget?
     @State private var selectedTarget: SelectionTarget?
     @State private var scrollAccumulator: CGFloat = 0
     @State private var lastScrollPageChangeTimestamp: TimeInterval = 0
+    @State private var activeDragPageFlipDirection: LibraryPageFlipDirection?
 
     private let scrollPageChangeCooldown: TimeInterval = 0.18
 
@@ -43,21 +44,32 @@ struct LaunchpadView: View {
     }
 
     private var pinnedApps: [AppInfo] {
-        catalog.pinnedAppIDs.compactMap { id in
-            catalog.apps.first(where: { $0.id == id })
+        let appsByID = Dictionary(uniqueKeysWithValues: catalog.visibleApps.map { ($0.id, $0) })
+
+        return catalog.pinnedAppIDs.compactMap { id in
+            appsByID[id]
         }
     }
 
     private var recentApps: [AppInfo] {
         guard settings.recentAppsSectionEnabled else { return [] }
 
+        let appsByID = Dictionary(uniqueKeysWithValues: catalog.visibleApps.map { ($0.id, $0) })
+
         return catalog.recentAppIDs.compactMap { id in
-            catalog.apps.first(where: { $0.id == id && !catalog.isPinned($0) })
+            guard let app = appsByID[id], !catalog.isPinned(app) else { return nil }
+            return app
         }
     }
 
     private var libraryApps: [AppInfo] {
-        catalog.apps.filter { app in
+        let libraryOrderIndexByID = Dictionary(
+            uniqueKeysWithValues: catalog.libraryOrderIDs.enumerated().map { index, id in
+                (id, index)
+            }
+        )
+
+        return catalog.visibleApps.filter { app in
             !catalog.isPinned(app)
         }
             .sorted { lhs, rhs in
@@ -65,7 +77,7 @@ struct LaunchpadView: View {
                     return !lhs.isSystemApp && rhs.isSystemApp
                 }
 
-                switch (catalog.libraryOrderIndex(for: lhs), catalog.libraryOrderIndex(for: rhs)) {
+                switch (libraryOrderIndexByID[lhs.id], libraryOrderIndexByID[rhs.id]) {
                 case let (left?, right?):
                     if left != right { return left < right }
                 case (nil, _?):
@@ -109,7 +121,7 @@ struct LaunchpadView: View {
     }
 
     private var totalAppCount: Int {
-        catalog.apps.count
+        catalog.visibleApps.count
     }
 
     var body: some View {
@@ -144,8 +156,9 @@ struct LaunchpadView: View {
         .task {
             catalog.reload()
         }
-        .onChange(of: catalog.apps.count) { _, _ in
+        .onChange(of: catalog.visibleApps.count) { _, _ in
             currentPage = 0
+            syncSelection()
         }
         .onChange(of: settings.libraryGridColumns) { _, _ in
             currentPage = 0
@@ -186,6 +199,18 @@ struct LaunchpadView: View {
                 }
 
                 StatPill(label: "Esc 关闭", systemImage: "escape")
+
+                if !catalog.hiddenAppIDs.isEmpty {
+                    Button {
+                        catalog.restoreRemovedIcons()
+                    } label: {
+                        Label("恢复已删除图标", systemImage: "arrow.uturn.backward")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.white.opacity(0.16))
+                }
             }
         }
         .padding(.top, 10)
@@ -221,24 +246,40 @@ struct LaunchpadView: View {
                                     isPinned: false,
                                     isSelected: isSelected(app, in: .library),
                                     showSurface: false,
+                                    reorderPlacement: libraryReorderTarget?.appID == app.id
+                                        ? libraryReorderTarget?.placement
+                                        : nil,
                                     onLaunch: {
                                         launch(app)
                                     },
                                     onDismiss: onDismiss,
+                                    onRemove: { catalog.removeIcon(for: app) },
                                     onDragStart: {
+                                        draggedPinnedAppID = nil
                                         draggedLibraryAppID = app.id
-                                        lastLibraryDropTargetID = nil
+                                        libraryReorderTarget = nil
+                                        activeDragPageFlipDirection = nil
                                         return NSItemProvider(object: app.id as NSString)
                                     }
                                 )
-                                .opacity(draggedLibraryAppID == app.id ? 0.45 : 1)
-                                .onDrop(
-                                    of: [UTType.text],
-                                    delegate: LibraryReorderDropDelegate(
+                                .opacity(1)
+                                .background(
+                                    ReorderDropZones(
                                         targetApp: app,
-                                        catalog: catalog,
                                         draggedAppID: $draggedLibraryAppID,
-                                        lastDropTargetID: $lastLibraryDropTargetID
+                                        reorderTarget: $libraryReorderTarget,
+                                        onDrop: { sourceAppID, placement in
+                                            performReorderWithoutAnimation {
+                                                catalog.moveLibraryApp(
+                                                    sourceAppID,
+                                                    relativeTo: app.id,
+                                                    placement: placement
+                                                )
+                                            }
+                                        },
+                                        onTargetEntered: {
+                                            activeDragPageFlipDirection = nil
+                                        }
                                     )
                                 )
                             }
@@ -265,10 +306,11 @@ struct LaunchpadView: View {
                                     of: [UTType.text],
                                     delegate: LibraryPageFlipDropDelegate(
                                         direction: .previous,
-                                        currentPage: safeCurrentPage,
-                                        totalPages: pages.count,
                                         draggedAppID: $draggedLibraryAppID,
-                                        onMoveToPage: moveLibraryDragToPreviousPage
+                                        onMoveToPage: {
+                                            moveLibraryDragToPage(direction: .previous)
+                                        },
+                                        onDropEnded: clearLibraryDragState
                                     )
                                 )
 
@@ -282,10 +324,11 @@ struct LaunchpadView: View {
                                     of: [UTType.text],
                                     delegate: LibraryPageFlipDropDelegate(
                                         direction: .next,
-                                        currentPage: safeCurrentPage,
-                                        totalPages: pages.count,
                                         draggedAppID: $draggedLibraryAppID,
-                                        onMoveToPage: moveLibraryDragToNextPage
+                                        onMoveToPage: {
+                                            moveLibraryDragToPage(direction: .next)
+                                        },
+                                        onDropEnded: clearLibraryDragState
                                     )
                                 )
                         }
@@ -327,7 +370,8 @@ struct LaunchpadView: View {
                                 onLaunch: {
                                     launch(app)
                                 },
-                                onDismiss: onDismiss
+                                onDismiss: onDismiss,
+                                onRemove: { catalog.removeIcon(for: app) }
                             )
                             .frame(width: 94)
                         }
@@ -372,25 +416,37 @@ struct LaunchpadView: View {
                                 app: app,
                                 isPinned: true,
                                 isSelected: isSelected(app, in: .pinned),
+                                reorderPlacement: pinnedReorderTarget?.appID == app.id
+                                    ? pinnedReorderTarget?.placement
+                                    : nil,
                                 onLaunch: {
                                     launch(app)
                                 },
                                 onDismiss: onDismiss,
+                                onRemove: { catalog.removeIcon(for: app) },
                                 onDragStart: {
+                                    draggedLibraryAppID = nil
                                     draggedPinnedAppID = app.id
-                                    lastPinnedDropTargetID = nil
+                                    pinnedReorderTarget = nil
                                     return NSItemProvider(object: app.id as NSString)
                                 }
                             )
                             .frame(width: 132)
-                            .opacity(draggedPinnedAppID == app.id ? 0.45 : 1)
-                            .onDrop(
-                                of: [UTType.text],
-                                delegate: PinnedReorderDropDelegate(
+                            .opacity(1)
+                            .background(
+                                ReorderDropZones(
                                     targetApp: app,
-                                    catalog: catalog,
                                     draggedAppID: $draggedPinnedAppID,
-                                    lastDropTargetID: $lastPinnedDropTargetID
+                                    reorderTarget: $pinnedReorderTarget,
+                                    onDrop: { sourceAppID, placement in
+                                        performReorderWithoutAnimation {
+                                            catalog.movePinnedApp(
+                                                sourceAppID,
+                                                relativeTo: app.id,
+                                                placement: placement
+                                            )
+                                        }
+                                    }
                                 )
                             )
                         }
@@ -466,7 +522,7 @@ struct LaunchpadView: View {
     }
 
     private func app(for target: SelectionTarget) -> AppInfo? {
-        catalog.apps.first(where: { $0.id == target.appID })
+        catalog.visibleApps.first(where: { $0.id == target.appID })
     }
 
     private func isSelected(_ app: AppInfo, in section: SectionKind) -> Bool {
@@ -772,38 +828,32 @@ struct LaunchpadView: View {
         moveToAdjacentPage(pageDelta: -1, preferredColumn: currentColumnIndex(), edge: .bottom)
     }
 
-    private func moveLibraryDragToNextPage() {
+    private func moveLibraryDragToPage(direction: LibraryPageFlipDirection) {
         guard
-            let draggedAppID = draggedLibraryAppID,
-            safeCurrentPage < pages.count - 1
+            draggedLibraryAppID != nil,
+            activeDragPageFlipDirection != direction
         else {
             return
         }
 
-        let targetPage = safeCurrentPage + 1
-        guard let targetAppID = pages[targetPage].first?.id else { return }
+        let pageDelta = direction == .previous ? -1 : 1
+        let targetPage = safeCurrentPage + pageDelta
+        guard
+            pages.indices.contains(targetPage),
+            let targetAppID = pages[targetPage].first?.id
+        else {
+            return
+        }
 
+        activeDragPageFlipDirection = direction
         currentPage = targetPage
-        catalog.moveLibraryApp(draggedAppID, before: targetAppID)
         selectedTarget = SelectionTarget(section: .library, appID: targetAppID)
-        lastLibraryDropTargetID = nil
     }
 
-    private func moveLibraryDragToPreviousPage() {
-        guard
-            let draggedAppID = draggedLibraryAppID,
-            safeCurrentPage > 0
-        else {
-            return
-        }
-
-        let targetPage = safeCurrentPage - 1
-        guard let targetAppID = pages[targetPage].first?.id else { return }
-
-        currentPage = targetPage
-        catalog.moveLibraryApp(draggedAppID, before: targetAppID)
-        selectedTarget = SelectionTarget(section: .library, appID: targetAppID)
-        lastLibraryDropTargetID = nil
+    private func clearLibraryDragState() {
+        draggedLibraryAppID = nil
+        libraryReorderTarget = nil
+        activeDragPageFlipDirection = nil
     }
 
     private func currentColumnIndex() -> Int {
@@ -818,6 +868,16 @@ struct LaunchpadView: View {
     }
 }
 
+private struct ReorderTarget: Equatable {
+    let appID: String
+    let placement: AppReorderPlacement
+}
+
+private enum LibraryPageFlipDirection {
+    case previous
+    case next
+}
+
 private struct AppTile: View {
     let app: AppInfo
     let isPinned: Bool
@@ -825,8 +885,10 @@ private struct AppTile: View {
     var isSelected = false
     var isCompact = false
     var showSurface = true
+    var reorderPlacement: AppReorderPlacement? = nil
     let onLaunch: () -> Void
     let onDismiss: () -> Void
+    let onRemove: () -> Void
     var onDragStart: (() -> NSItemProvider)? = nil
 
     var body: some View {
@@ -839,6 +901,11 @@ private struct AppTile: View {
 
             interactiveContent
                 .modifier(AppTileDragModifier(onDragStart: onDragStart))
+                .contextMenu {
+                    Button(role: .destructive, action: onRemove) {
+                        Label("删除图标", systemImage: "trash")
+                    }
+                }
         }
         .padding(.horizontal, isCompact ? 8 : 10)
         .padding(.vertical, isCompact ? 10 : 14)
@@ -853,9 +920,19 @@ private struct AppTile: View {
                     .stroke(isSelected ? .white : tileBorderColor, lineWidth: isSelected ? 2 : 1)
             }
         }
+        .overlay(alignment: reorderPlacement == .before ? .leading : .trailing) {
+            if reorderPlacement != nil {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(.yellow)
+                    .frame(width: 4)
+                    .padding(.vertical, 8)
+                    .shadow(color: .yellow.opacity(0.7), radius: 5)
+            }
+        }
         .shadow(color: showSurface && isSelected ? .white.opacity(0.26) : .clear, radius: 16)
         .scaleEffect(isSelected ? 1.03 : 1.0)
         .animation(.easeOut(duration: 0.12), value: isSelected)
+        .animation(.easeOut(duration: 0.08), value: reorderPlacement)
     }
 
     private var interactiveContent: some View {
@@ -940,98 +1017,100 @@ private struct StatPill: View {
     }
 }
 
-private struct PinnedReorderDropDelegate: DropDelegate {
+private struct ReorderDropZones: View {
     let targetApp: AppInfo
-    let catalog: AppCatalog
     @Binding var draggedAppID: String?
-    @Binding var lastDropTargetID: String?
+    @Binding var reorderTarget: ReorderTarget?
+    let onDrop: (String, AppReorderPlacement) -> Void
+    var onTargetEntered: () -> Void = {}
 
-    func dropEntered(info: DropInfo) {
-        guard let draggedAppID, lastDropTargetID != targetApp.id else { return }
-        lastDropTargetID = targetApp.id
-        catalog.movePinnedApp(draggedAppID, before: targetApp.id)
+    var body: some View {
+        HStack(spacing: 0) {
+            reorderZone(placement: .before)
+            reorderZone(placement: .after)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    func performDrop(info: DropInfo) -> Bool {
-        draggedAppID = nil
-        lastDropTargetID = nil
-        return true
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func validateDrop(info: DropInfo) -> Bool {
-        draggedAppID != nil
+    private func reorderZone(placement: AppReorderPlacement) -> some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .onDrop(
+                of: [UTType.text],
+                delegate: AppReorderDropDelegate(
+                    targetAppID: targetApp.id,
+                    placement: placement,
+                    draggedAppID: $draggedAppID,
+                    reorderTarget: $reorderTarget,
+                    onDrop: onDrop,
+                    onTargetEntered: onTargetEntered
+                )
+            )
     }
 }
 
-private struct LibraryReorderDropDelegate: DropDelegate {
-    let targetApp: AppInfo
-    let catalog: AppCatalog
+private struct AppReorderDropDelegate: DropDelegate {
+    let targetAppID: String
+    let placement: AppReorderPlacement
     @Binding var draggedAppID: String?
-    @Binding var lastDropTargetID: String?
+    @Binding var reorderTarget: ReorderTarget?
+    let onDrop: (String, AppReorderPlacement) -> Void
+    let onTargetEntered: () -> Void
 
     func dropEntered(info: DropInfo) {
-        guard let draggedAppID, lastDropTargetID != targetApp.id else { return }
-        lastDropTargetID = targetApp.id
-        catalog.moveLibraryApp(draggedAppID, before: targetApp.id)
+        updateReorderTarget()
+    }
+
+    func dropExited(info: DropInfo) {
+        guard reorderTarget == ReorderTarget(appID: targetAppID, placement: placement) else { return }
+        reorderTarget = nil
     }
 
     func performDrop(info: DropInfo) -> Bool {
+        guard let sourceAppID = draggedAppID else { return false }
+
+        onDrop(sourceAppID, placement)
         draggedAppID = nil
-        lastDropTargetID = nil
+        reorderTarget = nil
         return true
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+        updateReorderTarget()
+        return DropProposal(operation: .move)
     }
 
     func validateDrop(info: DropInfo) -> Bool {
         draggedAppID != nil
     }
+
+    private func updateReorderTarget() {
+        guard draggedAppID != nil else { return }
+        reorderTarget = ReorderTarget(appID: targetAppID, placement: placement)
+        onTargetEntered()
+    }
+}
+
+private func performReorderWithoutAnimation(_ updates: () -> Void) {
+    var transaction = Transaction(animation: nil)
+    transaction.disablesAnimations = true
+    withTransaction(transaction, updates)
 }
 
 private struct LibraryPageFlipDropDelegate: DropDelegate {
-    enum Direction {
-        case previous
-        case next
-    }
-
-    let direction: Direction
-    let currentPage: Int
-    let totalPages: Int
+    let direction: LibraryPageFlipDirection
     @Binding var draggedAppID: String?
     let onMoveToPage: () -> Void
+    let onDropEnded: () -> Void
 
     func dropEntered(info: DropInfo) {
         guard draggedAppID != nil else { return }
-
-        switch direction {
-        case .previous where currentPage > 0:
-            onMoveToPage()
-        case .next where currentPage < totalPages - 1:
-            onMoveToPage()
-        default:
-            break
-        }
+        onMoveToPage()
     }
 
     func performDrop(info: DropInfo) -> Bool {
         guard draggedAppID != nil else { return false }
-
-        switch direction {
-        case .previous where currentPage > 0:
-            onMoveToPage()
-        case .next where currentPage < totalPages - 1:
-            onMoveToPage()
-        default:
-            break
-        }
-
-        self.draggedAppID = nil
+        onDropEnded()
         return true
     }
 
