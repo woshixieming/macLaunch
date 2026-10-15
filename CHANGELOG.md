@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.9
+
+- Fixed an app jumping to the end of the library when dropped in its existing position.
+- Removed the fallback that moved an app to the end when a drag target was invalid or stale.
+- Save library and pinned app order only when the order changes.
+- Added 42 regression cases for adjacent positions, invalid IDs, cross-page ordering, pinned apps, and persisted order.
+
 ## 1.0.8
 
 - Fixed Safari discovery when macOS exposes it through a hidden system Cryptex symlink.

@@ -123,7 +123,8 @@ final class AppCatalog: ObservableObject {
                 moving: sourceID,
                 relativeTo: targetID,
                 placement: placement
-            )
+            ),
+            reorderedIDs != pinnedAppIDs
         else {
             return
         }
@@ -139,17 +140,15 @@ final class AppCatalog: ObservableObject {
     func moveLibraryApp(_ sourceID: String, relativeTo targetID: String, placement: AppReorderPlacement) {
         guard sourceID != targetID else { return }
 
-        guard let reorderedIDs = reorderedIDs(
-            libraryOrderIDs,
-            moving: sourceID,
-            relativeTo: targetID,
-            placement: placement
-        ) else {
-            if libraryOrderIDs.last != sourceID {
-                libraryOrderIDs.removeAll { $0 == sourceID }
-                libraryOrderIDs.append(sourceID)
-                persistLibraryOrderIDs()
-            }
+        guard
+            let reorderedIDs = reorderedIDs(
+                libraryOrderIDs,
+                moving: sourceID,
+                relativeTo: targetID,
+                placement: placement
+            ),
+            reorderedIDs != libraryOrderIDs
+        else {
             return
         }
 
@@ -201,7 +200,6 @@ final class AppCatalog: ObservableObject {
         let insertionIndex = placement == .before ? targetIndex : targetIndex + 1
         reordered.insert(sourceID, at: min(insertionIndex, reordered.count))
 
-        guard reordered != ids else { return nil }
         return reordered
     }
 
